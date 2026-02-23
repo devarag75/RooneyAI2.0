@@ -11,7 +11,7 @@ SLEEP_WORDS = ["go to sleep", "stop listening", "goodnight"]
 def wake_detected(text):
     words = text.split()
     for word in words:
-        if fuzz.ratio(word, WAKE_WORD) > 55:
+        if fuzz.ratio(word, WAKE_WORD) > 60:
             return True
     return False
 
@@ -23,10 +23,12 @@ def open_google_search(query):
 def start_voice(ui):
     recognizer = sr.Recognizer()
 
+    # 🔥 Improve recognition accuracy
     recognizer.energy_threshold = 300
     recognizer.dynamic_energy_threshold = True
-    recognizer.pause_threshold = 2.0
-    recognizer.non_speaking_duration = 1.0
+    recognizer.pause_threshold = 1.5
+    recognizer.phrase_threshold = 0.3
+    recognizer.non_speaking_duration = 0.8
 
     mic = sr.Microphone()
     active_mode = False
@@ -39,21 +41,22 @@ def start_voice(ui):
 
     while True:
         try:
+            # 🚫 Prevent assistant from hearing itself
             if ui.is_speaking:
-                time.sleep(0.2)
+                time.sleep(0.3)
                 continue
 
             with mic as source:
                 print("Listening...")
-                audio = recognizer.listen(source)
+                audio = recognizer.listen(source, timeout=None)
 
             try:
-                command = recognizer.recognize_google(audio).lower()
+                command = recognizer.recognize_google(audio, language="en-US").lower()
                 print("You said:", command)
             except:
                 continue
 
-            # Wake word activation
+            # 🟢 Wake Word Detection
             if not active_mode and wake_detected(command):
                 active_mode = True
                 ui.listening = True
@@ -63,7 +66,7 @@ def start_voice(ui):
 
             if active_mode:
 
-                # Sleep mode
+                # 🔵 Sleep Mode
                 if any(phrase in command for phrase in SLEEP_WORDS):
                     active_mode = False
                     ui.listening = False
@@ -71,22 +74,43 @@ def start_voice(ui):
                     ui.speak("Going to sleep.")
                     continue
 
-                # 🔥 GOOGLE SEARCH COMMAND
+                # 🔎 Google Search With Confirmation
                 if command.startswith("search"):
                     query = command.replace("search", "").strip()
+
                     if query:
-                        ui.speak(f"Searching Google for {query}")
-                        open_google_search(query)
+                        ui.speak(f"Did you say search for {query}?")
+
+                        # Listen for confirmation
+                        with mic as source:
+                            print("Confirming...")
+                            confirm_audio = recognizer.listen(source)
+
+                        try:
+                            confirmation = recognizer.recognize_google(confirm_audio, language="en-US").lower()
+                            print("Confirmation:", confirmation)
+
+                            if "yes" in confirmation:
+                                ui.speak(f"Searching Google for {query}")
+                                open_google_search(query)
+                            else:
+                                ui.speak("Search cancelled.")
+                        except:
+                            ui.speak("I didn't catch that. Cancelling search.")
+
                     continue
 
+                # 🌐 Open Google directly
                 if command.startswith("open google"):
                     ui.speak("Opening Google")
                     webbrowser.open("https://www.google.com")
                     continue
 
-                # Default AI response
+                # 🤖 Normal AI Response
                 response = ask_rooney(command)
-                ui.speak(response)
+
+                if response:
+                    ui.speak(response)
 
         except Exception as e:
             print("Error:", e)
